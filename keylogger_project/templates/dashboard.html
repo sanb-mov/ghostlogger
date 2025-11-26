@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keylogger Dashboard</title>
+    <!-- Bootstrap CSS (Diseño rápido) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts (Estilo consola) -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+        }
+        .table-dark {
+            --bs-table-bg: #1e1e1e;
+            --bs-table-border-color: #333;
+        }
+        .keystroke-cell {
+            font-family: 'Fira Code', monospace;
+            color: #00ff41; /* Verde hacker */
+            white-space: pre-wrap; /* Mantiene saltos de línea */
+            font-size: 0.9rem;
+        }
+        .window-badge {
+            font-size: 0.8rem;
+            background-color: #2d2d44;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+        .header-title {
+            color: #00ff41;
+            font-weight: bold;
+        }
+        /* Animación suave al entrar filas nuevas */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        tr { animation: fadeIn 0.5s; }
+    </style>
+</head>
+<body>
+
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="header-title">⌨️ Log Monitor</h2>
+        <div>
+            <span id="status" class="badge bg-secondary me-2">Desconectado</span>
+            <button class="btn btn-outline-success btn-sm" onclick="fetchLogs()">Actualizar ahora</button>
+        </div>
+    </div>
+
+    <div class="card shadow-lg">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-dark table-hover mb-0 align-middle">
+                    <thead>
+                        <tr class="text-secondary">
+                            <th scope="col" style="width: 15%">Hora</th>
+                            <th scope="col" style="width: 25%">Ventana / Aplicación</th>
+                            <th scope="col" style="width: 60%">Teclas Capturadas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-body">
+                        <!-- Aquí se insertan los datos con JS -->
+                        <tr>
+                            <td colspan="3" class="text-center py-4">Cargando datos...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function fetchLogs() {
+        const statusBadge = document.getElementById('status');
+        try {
+            const response = await fetch('/api/get_logs');
+            if (!response.ok) throw new Error('Error en red');
+            
+            const logs = await response.json();
+            const tbody = document.getElementById('logs-body');
+            tbody.innerHTML = ''; // Limpiar tabla actual
+
+            logs.forEach(log => {
+                // Formatear la fecha
+                const date = new Date(log.timestamp).toLocaleString();
+
+                const row = `
+                    <tr>
+                        <td class="text-muted small">${date}</td>
+                        <td>
+                            <div class="window-badge text-truncate" style="max-width: 250px;">
+                                ${escapeHtml(log.window_title)}
+                            </div>
+                        </td>
+                        <td class="keystroke-cell">${escapeHtml(log.keystrokes)}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+            statusBadge.textContent = "Conectado · Auto-refresco";
+            statusBadge.className = "badge bg-success me-2";
+
+        } catch (error) {
+            console.error('Error fetching logs:', error);
+            statusBadge.textContent = "Error de conexión";
+            statusBadge.className = "badge bg-danger me-2";
+        }
+    }
+
+    // Función simple para prevenir inyección HTML (XSS)
+    function escapeHtml(text) {
+        if (!text) return "";
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // Cargar al inicio y luego cada 3 segundos
+    fetchLogs();
+    setInterval(fetchLogs, 3000);
+</script>
+
+</body>
+</html>
