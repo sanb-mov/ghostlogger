@@ -84,8 +84,16 @@ Recibe los logs capturados por el cliente.
 - **Requests Fallback:** El cliente incluye una implementación manual de `HTTP Request` en caso de que la librería `requests` no esté instalada en la víctima.
 - **Cross-Origin (CORS):** Habilitado en el servidor para permitir peticiones desde distintos orígenes durante pruebas.
   
-## 🔍 Vista a la base de datos  
-Para ver la base de datos abre tu navegador y entra a: http://IP-DEL-SERVIDOR:5000 (o tu IP si es remoto).
+## 🖥️ Uso del Dashboard
+Accede a http://IP-DEL-SERVIDOR:5000 (o la IP pública de tu servidor).
+Verás una tabla con la Hora (Azul), Ventana y Teclas (Verde).
+La tabla se actualiza automáticamente cada 3 segundos.
+💀 El botón "ELIMINAR CLIENTE"
+En la parte superior derecha hay un botón rojo.
+
+Acción: Activa una bandera global en el servidor.
+Consecuencia: La próxima vez que el cliente envíe logs, el servidor responderá con {"command": "self_destruct"}´.
+Resultado: El cliente ejecutará un comando de sistema para borrarse a sí mismo del disco y cerrar el proceso.
 
 ## 🤝 Contribuciones
 Las contribuciones son bienvenidas, siempre y cuando mantengan el enfoque educativo del proyecto.
