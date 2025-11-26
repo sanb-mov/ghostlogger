@@ -23,6 +23,8 @@ keylogger_project/
 ├── server/
 │   ├── app.py             # API Flask que recibe los logs
 │   └── requirements.txt   # Dependencias del servidor
+│   ├── templates/        
+│   └── dashboard.html     # Vista a la base de datos
 ├── client/
 │   ├── keylogger.py       # Script espía (captura teclado)
 │   └── requirements.txt   # Dependencias del cliente
