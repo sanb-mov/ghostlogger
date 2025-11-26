@@ -83,6 +83,9 @@ Recibe los logs capturados por el cliente.
 - **Buffer Local:** Acumula teclas localmente para reducir el tráfico de red.
 - **Requests Fallback:** El cliente incluye una implementación manual de `HTTP Request` en caso de que la librería `requests` no esté instalada en la víctima.
 - **Cross-Origin (CORS):** Habilitado en el servidor para permitir peticiones desde distintos orígenes durante pruebas.
+  
+## 🔍 Vista a la base de datos  
+Para ver la base de datos abre tu navegador y entra a: http://IP-DEL-SERVIDOR:5000 (o tu IP si es remoto).
 
 ## 🤝 Contribuciones
 Las contribuciones son bienvenidas, siempre y cuando mantengan el enfoque educativo del proyecto.
