@@ -29,4 +29,4 @@ keylogger_project/
 └── database.sql           # Script de creación de la base de datos
 ```
 
-# 🛠️ Guía de Despliegue e Instalación
+## 🛠️ - [Guía de Despliegue](Guía.md)
